@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <xcb/xcb.h>
 #include <xcb/dpms.h>
+#include <dirent.h>
 #include <err.h>
 #include <assert.h>
 #include <security/pam_appl.h>
@@ -72,6 +73,11 @@ static struct xkb_state *xkb_state;
 static struct xkb_context *xkb_context;
 static struct xkb_keymap *xkb_keymap;
 
+
+
+char *animation_path = NULL;
+char animation_file_names[256][256];
+int animation_file_count=0;
 cairo_surface_t *img = NULL;
 bool tile = false;
 bool ignore_empty_password = false;
@@ -325,6 +331,41 @@ static bool skip_without_validation(void) {
         return true;
 
     return false;
+}
+
+
+bool check_filename_is_png(char *filename){
+  const char *ext = strrchr(filename, '.');
+  if (!ext) {
+    return false;
+  } else {
+    return (strcmp(".png", ext) == 0);
+  }
+}
+
+/*
+ * Sets up the global animation file names and count
+ */
+
+void load_animation_names() {
+  int count=0;
+  DIR *dir;
+  struct dirent *ent;
+
+  if ((dir = opendir (animation_path)) != NULL) {
+
+    while ((ent = readdir(dir)) != NULL) {
+        if(check_filename_is_png(ent->d_name)) {
+            DEBUG("loading animation file %s\n", ent->d_name);
+            strcpy(animation_file_names[count],ent->d_name);
+            count++;
+        }
+
+      }
+
+    closedir(dir);
+    animation_file_count = count;
+  }
 }
 
 /*
@@ -681,6 +722,7 @@ int main(int argc, char *argv[]) {
         {"help", no_argument, NULL, 'h'},
         {"no-unlock-indicator", no_argument, NULL, 'u'},
         {"image", required_argument, NULL, 'i'},
+        {"animation", required_argument, NULL, 'a'},
         {"tiling", no_argument, NULL, 't'},
         {"ignore-empty-password", no_argument, NULL, 'e'},
         {"inactivity-timeout", required_argument, NULL, 'I'},
@@ -691,7 +733,7 @@ int main(int argc, char *argv[]) {
     if ((username = getenv("USER")) == NULL)
         errx(EXIT_FAILURE, "USER environment variable not set, please set it.\n");
 
-    char *optstring = "hvnbgdc:p:ui:teI:";
+    char *optstring = "hvnbgdc:p:ui:a:teI:";
     while ((o = getopt_long(argc, argv, optstring, longopts, &optind)) != -1) {
         switch (o) {
         case 'v':
@@ -730,6 +772,9 @@ int main(int argc, char *argv[]) {
         case 'i':
             image_path = strdup(optarg);
             break;
+        case 'a':
+            animation_path = strdup(optarg);
+            break;
         case 't':
             tile = true;
             break;
@@ -754,7 +799,7 @@ int main(int argc, char *argv[]) {
             break;
         default:
             errx(EXIT_FAILURE, "Syntax: i3lock [-v] [-n] [-b] [-d] [-c color] [-u] [-p win|default]"
-            " [-i image.png] [-t] [-e] [-I] [-g]"
+            " [-i image.png] [-a path/to/imgs/] [-t] [-e] [-I] [-g]"
             );
         }
     }
@@ -852,6 +897,9 @@ int main(int argc, char *argv[]) {
 
         blur_image_surface(img, 10000);
         //stack_blur_image_surface(img, 20);
+    }
+    if(animation_path) {
+        load_animation_names();
     }
 
     /* Pixmap on which the image is rendered to (if any) */
